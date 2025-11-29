@@ -13,7 +13,7 @@ ENABLE_FILE_LOGGING = True
 LOG_DIR = "logs"
 MAX_LOG_SIZE_BYTES = 1_000_000  # 1 MB per file before rotation
 MSG_COUNTER = 0
-DATE_STR = datetime.now().strftime("%Y%m%d")
+DATE_STR = datetime.now().strftime("%Y-%m-%d_%H-%M")
 
 # Log levels
 LEVELS = {
@@ -32,8 +32,8 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 LOG_FILES = {
     "ERROR": os.path.join(LOG_DIR, f"{DATE_STR}_error.log"),
-    "WARN": os.path.join(LOG_DIR, f"{DATE_STR}_warn.log"),
-    "INFO": os.path.join(LOG_DIR, f"{DATE_STR}_info.log"),
+    "WARN":  os.path.join(LOG_DIR, f"{DATE_STR}_warn.log"),
+    "INFO":  os.path.join(LOG_DIR, f"{DATE_STR}_info.log"),
     "DEBUG": os.path.join(LOG_DIR, f"{DATE_STR}_debug.log"),
 }
 
@@ -61,23 +61,24 @@ def _create_log_files():
             with open(log_file, "w") as f:
                 pass  # just create the file
 
-def _name_log_files_with_current_date():
-    """Rename log files to include the current date."""
-    DATE_STR = datetime.now().strftime("%Y%m%d")
-    for level, log_file in LOG_FILES.values():
-        base, ext = os.path.splitext(log_file)
-        dated_log_file = f"{base}_{DATE_STR}{ext}"
-        LOG_FILES[level] = dated_log_file
+# def _name_log_files_with_current_date():
+#     """Rename log files to include the current date."""
+#     DATE_STR = datetime.now().strftime("%Y%m%d")
+#     for level, log_file in LOG_FILES.values():
+#         base, ext = os.path.splitext(log_file)
+#         dated_log_file = f"{base}_{DATE_STR}{ext}"
+#         LOG_FILES[level] = dated_log_file
 
-def _create_log_files_if_needed():
-    """Create log files with current date if the date has changed."""
-    global DATE_STR
-    date_str = datetime.now().strftime("%Y%m%d")
-    if date_str == DATE_STR:
-        return  # already created for today
-    DATE_STR = date_str
-    _name_log_files_with_current_date()
-    _create_log_files()
+# def _create_log_files_if_needed():
+#     """Create log files with current date if the date has changed."""
+#     global DATE_STR
+#     date_str = datetime.now().strftime("%Y%m%d")
+#     if date_str == DATE_STR:
+#         return  # already created for today
+#     DATE_STR = date_str
+#     _name_log_files_with_current_date()
+#     _create_log_files()
+#     MSG_COUNTER = 0
            
 def _rotate_if_needed(log_file):
     """Rotate log file if it exceeds MAX_LOG_SIZE_BYTES."""
@@ -93,7 +94,6 @@ def _rotate_if_needed(log_file):
                 break
             i += 1
 
-
 def _async_log_worker():
     """Background thread that processes queued log entries."""
     global stop_signal, MSG_COUNTER
@@ -104,7 +104,7 @@ def _async_log_worker():
             continue
 
         log_file = LOG_FILES[level]
-        _create_log_files_if_needed() 
+        # _create_log_files_if_needed() 
         _rotate_if_needed(log_file)  # rotate file if needed
 
         MSG_COUNTER += 1
@@ -168,7 +168,7 @@ def set_logs_dir(dir_path):
     LOG_DIR = dir_path
     os.makedirs(LOG_DIR, exist_ok=True)
     for level in LOG_FILES:
-        LOG_FILES[level] = os.path.join(LOG_DIR, f"{level.lower()}.log")
+        LOG_FILES[level] = os.path.join(LOG_DIR, f"{DATE_STR}_{level.lower()}.log")
 
 def set_file_logging_enabled(enabled):
     """Enable or disable logging to files."""

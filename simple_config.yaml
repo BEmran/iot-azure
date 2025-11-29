@@ -1,0 +1,16 @@
+# Configuration file for Azure IoT device connection and application parameters
+
+id_scope: "0ne01093627"
+device_id: "IOT01"
+symmetric_key: "8ObYE/LLUWA3w9gr+RFeDnMc9NeN3kYcKqkRxHalmeg="
+
+heartbeat_interval_sec: 10.0 # seconds
+
+log_dir: "logs"  # Directory to store log files
+print_level: "INFO"  # Minimum level for terminal printing: "DEBUG", "INFO", "WARN", "ERROR"
+log_level: "DEBUG"  # Minimum level for file logging: "DEBUG", "INFO", "WARN", "ERROR"
+
+relay_gpio_line: 17  # GPIO line number for relay control
+power_on_delay_sec: 5.0  # Delay after powering on the slave
+
+slave_ip_address: ""
