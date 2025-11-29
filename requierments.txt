@@ -1,0 +1,3 @@
+azure-iot-device
+PyYAML
+gpiod
