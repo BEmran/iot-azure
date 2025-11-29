@@ -1,0 +1,32 @@
+# Configuration file for Azure IoT device connection and application parameters
+connection:
+  method: "DPS"  # Options: "DPS" or "HUB" 
+  dps: # central iot parameters
+    id_scope: "0ne01093627"
+    device_id: "01"
+    symmetric_key: "C80Pr2/HQy0PQxt8oqUQbRgRihYqkxd5MJbeSZictwQ="
+
+  hub:
+    device_connection_string: "HostName=NewSenceIoTHub.azure-devices.net;DeviceId=RPiIoT02;SharedAccessKey=sog0CXZkUGTUh8RMy7l1Pqg+BBk6V0tCqBaUm09Jm/Q="
+
+# Application parameters
+app:
+  telemetry:
+    interval_sec: 10.0
+    heartbeat_interval_sec: 60.0 # seconds
+  network:
+    check_interval_sec: 5.0  # seconds
+    send_retry_interval_sec: 5.0  # seconds
+
+sys:
+  log_to_file: true  # Enable or disable logging to file
+  log_file_max_size_bytes: 1000000  # Max size per log file before rotation
+  log_dir: "logs"  # Directory to store log files
+  print_level: "INFO"  # Minimum level for terminal printing: "DEBUG", "INFO", "WARN", "ERROR"
+  log_level: "DEBUG"  # Minimum level for file logging: "DEBUG", "INFO", "WARN", "ERROR"
+
+hardware:
+  slave:
+    num: 0  # Slave identifier
+    relay_gpio_line: 17  # GPIO line number for relay control
+    power_on_delay_sec: 5.0  # Delay after powering on the slave
