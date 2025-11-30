@@ -1,0 +1,13 @@
+[Unit]
+Description=My custom startup scripts service
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/home/pi/startup_wrapper.sh
+User=pi
+# Optional: Use the line below if you want to log output
+# ExecStart=/bin/bash -c '/home/pi/startup_wrapper.sh > /home/pi/startup.log 2>&1'
+
+[Install]
+WantedBy=multi-user.target
