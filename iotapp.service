@@ -1,0 +1,17 @@
+# /etc/systemd/system/iotapp.service
+[Unit]
+Description=IoT Device Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/iot/ws/iot-azure/start_iot.sh
+WorkingDirectory=/home/iot/ws/iot-azure
+Restart=on-failure
+RestartSec=5
+User=iot
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
