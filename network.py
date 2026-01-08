@@ -63,7 +63,16 @@ def wait_until_connected():
     while not is_connected():
         logger.warn(f"No internet. Retrying in {CHECK_INTERVAL} sec...")
         time.sleep(CHECK_INTERVAL)
-    
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Doesn't have to be reachable; no packets are actually sent.
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    finally:
+        s.close()
+        
 def main():
     
     timeout = 5.0 # sec
@@ -73,5 +82,6 @@ def main():
     target_ip = "10.189.229.149" 
     print(f"result of pinging {ping(target_ip)}")
     
+    print(f"Local IP: {get_local_ip()}")
 if __name__ == "__main__":
     main()
