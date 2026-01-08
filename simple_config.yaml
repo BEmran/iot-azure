@@ -1,10 +1,10 @@
 # Configuration file for Azure IoT device connection and application parameters
 
 id_scope: "0ne01093627"
-device_id: "IOT01"
-symmetric_key: "8ObYE/LLUWA3w9gr+RFeDnMc9NeN3kYcKqkRxHalmeg="
+device_id: "IoT02"
+symmetric_key: "M2vv63YnN6pVZQ3B5KxsQxyuHgzFkZ2sRSZa64VF1xk="
 
-heartbeat_interval_sec: 10.0 # seconds
+heartbeat_interval_sec: 30.0 # seconds
 
 log_dir: "logs"  # Directory to store log files
 print_level: "INFO"  # Minimum level for terminal printing: "DEBUG", "INFO", "WARN", "ERROR"
