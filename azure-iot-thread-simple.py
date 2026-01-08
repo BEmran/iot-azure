@@ -12,6 +12,7 @@ import logger
 from slave import Slave # custom module
 import network
 import my_azure
+import find_ip_mac_only
 
 CONFIG_PATH = "simple_config.yaml"
 RUNNING = True
@@ -111,7 +112,15 @@ def parse_slave_config(config):
         
     ip = str(config.get("slave_ip_address", SLAVE_CONFIG["slave_ip_address"]))
     if not ip:
-        logger.warn(f"Slave ip address is empty, using default {SLAVE_CONFIG['slave_ip_address']}")
+        if config.get("search_for_slave_ip_address", False):
+            logger.debug("Slave ip address is empty. Searching for slave IP address...")
+            ip = find_ip_mac_only.find_vendor_ips_in_subnet("")
+            if ip:
+                logger.debug(f"Found slave IP address: {ip}")
+            else:
+                logger.warn("Could not find slave IP address on the network.")
+        else:
+            logger.warn(f"Slave ip address is empty, using default {SLAVE_CONFIG['slave_ip_address']}")
         SLAVE_CONFIG["slave_ip_address"] = ip
     
     logger.debug(f"Slave configuration parsed: {SLAVE_CONFIG}")
@@ -136,7 +145,7 @@ def create_info_msg():
     global DEVICE_ID, SLAVE_CONFIG
     payload = {
         "DeviceID": DEVICE_ID,
-        "DeviceIP": str(socket.gethostbyname(socket.gethostname())),
+        "DeviceIP": network.get_local_ip(), # str(socket.gethostbyname(socket.gethostname())),
         "SlaveIP": SLAVE_CONFIG["slave_ip_address"],
     }
     return payload
