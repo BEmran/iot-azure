@@ -12,5 +12,5 @@ log_level: "DEBUG"  # Minimum level for file logging: "DEBUG", "INFO", "WARN", "
 
 relay_gpio_line: 17  # GPIO line number for relay control
 power_on_delay_sec: 5.0  # Delay after powering on the slave
-
+search_for_slave_ip_address: false
 slave_ip_address: ""
