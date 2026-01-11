@@ -29,3 +29,21 @@ sudo systemctl enable iotapp.service
 sudo systemctl start iotapp.service
 journalctl -u iotapp.service -f
 sudo reboot now
+
+
+For the run_all_tests.sh: 
+Create the default devices file (devices.txt)
+
+In the same folder as the scripts:
+nano devices.txt
+
+Example content:
+# Attendance devices in this site
+192.168.1.50
+192.168.1.51
+
+# You can also use commas:
+192.168.1.52, 192.168.1.53
+
+Run using the default file
+./run_all_tests.sh -a
