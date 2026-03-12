@@ -6,8 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /home/iot/ws/iot-azure/start_iot.sh
-WorkingDirectory=/home/iot/ws/iot-azure
+ExecStart=/bin/bash /home/iot/iot-azure/start_iot.sh
+WorkingDirectory=/home/iot/iot-azure
 Restart=on-failure
 RestartSec=5
 User=iot
