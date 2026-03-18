@@ -1,8 +1,9 @@
 # Configuration file for Azure IoT device connection and application parameters
 
-id_scope: "0ne01093627"
-device_id: "IoT02"
-symmetric_key: "M2vv63YnN6pVZQ3B5KxsQxyuHgzFkZ2sRSZa64VF1xk="
+id_scope: "0ne01173A60"
+device_id: "site-001-iot"
+symmetric_key: "8SLw+5EYL2ZJ9jRagD7dMgQOb806nS3yQK4GgR4wTpGyAtR18LQRCBQSANdllSTb04Tlck8WiBN6AIoTsLefpQ=="
+provisioning_host: "global.azure-devices-provisioning.net"
 
 heartbeat_interval_sec: 30.0 # seconds
 

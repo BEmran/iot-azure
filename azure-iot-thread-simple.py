@@ -14,6 +14,8 @@ import network
 import my_azure
 import find_ip_mac_only
 
+HEARTBEAT_SEQUENCE_NUMBER = 0
+
 CONFIG_PATH = "simple_config.yaml"
 RUNNING = True
 # ----------------------------------------------------
@@ -24,6 +26,8 @@ CLIENT = None
 SLAVE_READY_STATE = False
 LED_USED = False
 DEVICE_ID = "0"
+SITE_NAME = "SITE-001" # TODO: get from config or env variable
+DEPLOYMENT_DATE = "2024-01-01" # TODO: get from config or env variable
 HEARTBEAT_INTERVAL_SEC = 10.0
 SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 17, "power_off_delay_sec": 5.0, "slave_ip_address": ""}
 LOG_CONFIG = {"print_level": "info", "log_level": "info", "log_dir": "logs"}
@@ -134,19 +138,24 @@ def apply_system_config():
 # ----------------------------------------------------
 # creating messages
 # ----------------------------------------------------
-def create_heartbeat():
+def create_heartbeat(slave_status_str):
+    global HEARTBEAT_SEQUENCE_NUMBER
+    HEARTBEAT_SEQUENCE_NUMBER += 1
     payload = {
-        "SlaveStatus": slave_status(),
-        "LedStatus": led_status(),
+        "deviceUtcTs": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sequenceNumber": HEARTBEAT_SEQUENCE_NUMBER,
+        "SlaveStatus": slave_status_str,
+        # "LedStatus": led_status(),
     }
     return payload
 
 def create_info_msg():
-    global DEVICE_ID, SLAVE_CONFIG
+    global SLAVE_CONFIG, SITE_NAME, DEPLOYMENT_DATE 
     payload = {
-        "DeviceID": DEVICE_ID,
-        "DeviceIP": network.get_local_ip(), # str(socket.gethostbyname(socket.gethostname())),
-        "SlaveIP": SLAVE_CONFIG["slave_ip_address"],
+        "siteName": SITE_NAME,
+        "deploymentDate": DEPLOYMENT_DATE,
+        "rpiIp": network.get_local_ip(), # str(socket.gethostbyname(socket.gethostname())),
+        "slaveIp": SLAVE_CONFIG["slave_ip_address"],
     }
     return payload
 
@@ -276,7 +285,7 @@ def heartbeat_task(thread_running_event):
         now = time.time()
         if now - last_time >= HEARTBEAT_INTERVAL_SEC:
             last_time = now
-            message = create_heartbeat()
+            message = create_heartbeat(slave_status_str=slave_status())
             logger.debug(f"Queuing message: {message}")
             send_queue.put(my_azure.create_telementry_message_pair(message))
         time.sleep(0.1)

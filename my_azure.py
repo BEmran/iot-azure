@@ -27,32 +27,31 @@ def create_telementry_message_pair(message):
 def create_property_message_pair(message):
     return {"type":MSGTYPE[1], "msg":message}
 
-def create_connection_str_from_dps(device_id, id_scope, symmetric_key):
+async def create_connection_str_from_dps(device_id, id_scope, symmetric_key, provisioning_host):
     logger.info("Registering device with DPS...")
 
     # 1) Connect to DPS
     provisioning_client = ProvisioningDeviceClient.create_from_symmetric_key(
-        provisioning_host="global.azure-devices-provisioning.net",
+        provisioning_host=provisioning_host,
         registration_id=device_id,
         id_scope=id_scope,
         symmetric_key=symmetric_key
     )
 
     # 2) Register and get assigned IoT Hub
-    registration_result = provisioning_client.register()
-
+    registration_result = await provisioning_client.register()
+    
+    logger.debug(f"Provisioning status: {registration_result.status}")
+    logger.debug(f"DPS Assigned hub: {registration_result.registration_state.assigned_hub}")
+    logger.debug(f"Device ID: {registration_result.registration_state.device_id}")
+    
     if registration_result.status != "assigned":
-        raise Runtimelogger.error(
-            f"DPS registration failed: {registration_result.status}"
-        )
-
-    hub_hostname = registration_result.registration_state.assigned_hub
-    logger.debug(f"DPS assigned hub: {hub_hostname}")
+        raise Runtimelogger.error(f"Device was not assigned by DPS: {registration_result.status}")
 
     # 3) Generate device connection string
     device_conn_str = (
-        f"HostName={hub_hostname};"
-        f"DeviceId={device_id};"
+        f"HostName={registration_result.registration_state.assigned_hub};"
+        f"DeviceId={registration_result.registration_state.device_id};"
         f"SharedAccessKey={symmetric_key}"
     )
 
@@ -94,12 +93,12 @@ class Client():
                 logger.error(f"send_message failed: {e}")
                 return False
             
-    def connect_to_iot_hub(self):
+    async def connect_to_iot_hub(self):
         with self.lock:
             if not self.client.connected:
                 try:
                     logger.info("Connecting to Azure IoT Hub...")
-                    self.client.connect()
+                    await self.client.connect()
                     logger.info("Successfully connected to IoT Hub.")
 
                 except Exception as e:
@@ -121,7 +120,7 @@ class Client():
     def send_method_response(self, response):
         self.client.send_method_response(response)
         
-    def disconnect(self):
+    async def disconnect(self):
         self.client.disconnect()
         logger.info("Disconnected.")
         
