@@ -310,8 +310,7 @@ def main():
     conn_str = connection_string(config)
     CLIENT = my_azure.Client(conn_str)
     
-    result = await CLIENT.connect_to_iot_hub()
-    if not result:
+    if not CLIENT.connect_to_iot_hub():
         logger.error("Could not connect to IoT Hub.")
         return  # Fail early if completely unable
 
@@ -350,7 +349,7 @@ def main():
         heartbeat_worker.join(timeout=1)
         command_processor_worker.join(timeout=1)
         time.sleep(2)  # wait for sender thread to exit
-        await CLIENT.disconnect()
+        CLIENT.disconnect()
         logger.info("Disconnected.")
         logger.info("Exiting.")
         

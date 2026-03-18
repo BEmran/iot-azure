@@ -27,7 +27,7 @@ def create_telementry_message_pair(message):
 def create_property_message_pair(message):
     return {"type":MSGTYPE[1], "msg":message}
 
-async def create_connection_str_from_dps(device_id, id_scope, symmetric_key, provisioning_host):
+def create_connection_str_from_dps(device_id, id_scope, symmetric_key, provisioning_host):
     logger.info("Registering device with DPS...")
 
     # 1) Connect to DPS
@@ -39,7 +39,7 @@ async def create_connection_str_from_dps(device_id, id_scope, symmetric_key, pro
     )
 
     # 2) Register and get assigned IoT Hub
-    registration_result = await provisioning_client.register()
+    registration_result = provisioning_client.register()
     
     logger.debug(f"Provisioning status: {registration_result.status}")
     logger.debug(f"DPS Assigned hub: {registration_result.registration_state.assigned_hub}")
@@ -93,12 +93,12 @@ class Client():
                 logger.error(f"send_message failed: {e}")
                 return False
             
-    async def connect_to_iot_hub(self):
+    def connect_to_iot_hub(self):
         with self.lock:
             if not self.client.connected:
                 try:
                     logger.info("Connecting to Azure IoT Hub...")
-                    await self.client.connect()
+                    self.client.connect()
                     logger.info("Successfully connected to IoT Hub.")
 
                 except Exception as e:
@@ -121,7 +121,7 @@ class Client():
     def send_method_response(self, response):
         self.client.send_method_response(response)
         
-    async def disconnect(self):
+    def disconnect(self):
         self.client.disconnect()
         logger.info("Disconnected.")
         
