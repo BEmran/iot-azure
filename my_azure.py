@@ -104,6 +104,7 @@ class Client():
                 except Exception as e:
                     logger.error(f"Azure connect failed: {e}")
                     time.sleep(RECONNECT_INTERVAL)
+                    return False
             
         self.client.on_method_request_received = self.command_handler
         return True

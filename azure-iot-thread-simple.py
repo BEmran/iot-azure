@@ -64,14 +64,15 @@ def load_config(config_path=CONFIG_PATH):
 
 def connection_string(config):
     global DEVICE_ID
-    if "device_id" not in config or "symmetric_key" not in config or "id_scope" not in config:
-        logger.error("Incomplete DPS configuration.")
+    if "device_id" not in config or "symmetric_key" not in config or "id_scope" not in config or "provisioning_host" not in config:
+        logger.error("Incomplete DPS configuration. missing one of device_id, symmetric_key, id_scope, provisioning_host")
         raise Runtimelogger.error(f"Cannot find connection string related configuration")
     DEVICE_ID = config["device_id"]
     id_scope = config["id_scope"]
     symmetric_key = config["symmetric_key"]
-    logger.debug(f"Connection configuration parsed device_id={DEVICE_ID}, id_scope={id_scope}, symmetric_key={symmetric_key}")
-    return my_azure.create_connection_str_from_dps(DEVICE_ID, id_scope, symmetric_key)
+    provisioning_host = config["provisioning_host"]
+    logger.debug(f"Connection configuration parsed device_id={DEVICE_ID}, id_scope={id_scope}, symmetric_key={symmetric_key}, provisioning_host={provisioning_host}")
+    return my_azure.create_connection_str_from_dps(DEVICE_ID, id_scope, symmetric_key, provisioning_host)
 
 def parse_heartbeat_config(config):
     """Parse heartbeat configuration"""
@@ -309,7 +310,8 @@ def main():
     conn_str = connection_string(config)
     CLIENT = my_azure.Client(conn_str)
     
-    if not CLIENT.connect_to_iot_hub():
+    result = await CLIENT.connect_to_iot_hub()
+    if not result:
         logger.error("Could not connect to IoT Hub.")
         return  # Fail early if completely unable
 
@@ -348,7 +350,7 @@ def main():
         heartbeat_worker.join(timeout=1)
         command_processor_worker.join(timeout=1)
         time.sleep(2)  # wait for sender thread to exit
-        CLIENT.disconnect()
+        await CLIENT.disconnect()
         logger.info("Disconnected.")
         logger.info("Exiting.")
         
