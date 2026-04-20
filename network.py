@@ -3,12 +3,22 @@ import socket
 import subprocess
 import platform
 import logger
+import ipaddress
+import time
 
 CHECK_INTERVAL = 5.0 # sec
 # ----------------------------------------------------
 # NETWORK CHECK
 # ----------------------------------------------------
 
+def is_valid_ip(ip_str):
+    try:
+        # This works for both IPv4 and IPv6
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
+    
 def ping(ip_address):
     """
     Pings a given IP address and returns True if reachable, False otherwise.

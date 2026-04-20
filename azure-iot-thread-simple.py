@@ -56,7 +56,7 @@ def load_config(config_path=CONFIG_PATH):
     try:
         with open(config_path, "r") as f:
             cfg = yaml.safe_load(f)
-            logger.info("Configuration loaded from {CONFIG_PATH}")
+            logger.info(f"Configuration loaded from {CONFIG_PATH}")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         raise Runtimelogger.error(f"Cannot find configuration file")
@@ -64,6 +64,11 @@ def load_config(config_path=CONFIG_PATH):
 
 def connection_string(config):
     global DEVICE_ID
+    # priority to connection string
+    if "connection_string" in config:
+        logger.debug("Using conenction string to connect to azure")
+        return config["connection_string"]
+
     if "device_id" not in config or "symmetric_key" not in config or "id_scope" not in config or "provisioning_host" not in config:
         logger.error("Incomplete DPS configuration. missing one of device_id, symmetric_key, id_scope, provisioning_host")
         raise Runtimelogger.error(f"Cannot find connection string related configuration")
@@ -80,7 +85,7 @@ def parse_heartbeat_config(config):
     interval = int(config.get("heartbeat_interval_sec", HEARTBEAT_INTERVAL_SEC))
     if interval <= 0:
         logger.warn(f"Invalid heartbeat interval {interval}, using default {HEARTBEAT_INTERVAL_SEC}")
-        HEARTBEAT_INTERVAL_SEC = interval
+    HEARTBEAT_INTERVAL_SEC = interval
     logger.debug(f"Heartbeat interval: {HEARTBEAT_INTERVAL_SEC}")
     
 def parse_log_config(config):
@@ -187,25 +192,48 @@ def stop_task():
     time.sleep(delay_sec)
     RUNNING = False
     
-def restart_cmd(cmd_payload):
+def reboot_slave_cmd(cmd_payload):
+    global STATE
+    STATE = "ONLINE" # TDOD remove this
     logger.info("Restart command received.")
-    delay = cmd_payload.get("delay", 0)
-    reason = cmd_payload.get("reason", "unspecified")
+    delay = 1
+    reason = ""
+    # try:
+    #     # TODO: add dekay and reson to command to parse
+    #     delay = float(cmd_payload.get("delay"))
+    #     reason = str(cmd_payload.get("reason"))
+    # except Exception as e:
+    #     logger.warn(f"Processing error: {e}") 
     logger.debug(f"Restarting in {delay} seconds. Reason: {reason}")
     threading.Thread(target=restart_slave_task, args=(delay, )).start()
-    return "restarted", 200
+    return True, "Reboot Success", 200
 
 def stop_cmd():
     logger.info("Stop command received.")
     threading.Thread(target=stop_task).start()
-    return "Recived", 999
+    return True, "Recived", 200
 
 def set_slave_ip_cmd(cmd_payload):
     global SLAVE_CONFIG
     logger.info("Set slave ip address.")
-    SLAVE_CONFIG["slave_ip_address"] = str(cmd_payload.get("IP", 0))
-    logger.debug(f"new ip address {SLAVE_CONFIG["slave_ip_address"]}")
-    return "updated", 200
+    
+    if not "IP" in cmd_payload:
+        logger.debug(f"Missing slave IP address")
+        return False, "Missing IP Tag", 405
+        
+    try:
+        new_ip = str(cmd_payload.get("IP"))
+    except Exception as e:
+        logger.warn(f"Processing error: {e}") 
+        return False, "failed to parse ip address", 404
+    
+    if network.is_valid_ip(new_ip):
+        SLAVE_CONFIG["slave_ip_address"] = new_ip
+        logger.debug(f"new slave ip address {SLAVE_CONFIG["slave_ip_address"]}")
+        return True, "Updated", 200
+    else:
+        logger.debug(f"The requested slave ip address {new_ip} is not valid")
+        return False, "Not valid ip address", 406
 
 def command_processor_task(thread_running_event):
     global CLIENT
@@ -216,26 +244,26 @@ def command_processor_task(thread_running_event):
 
         cmd_name = cmd_request.name
         payload = cmd_request.payload
-        logger.debug(f"processing command {cmd_name} and payload {payload}")
+        logger.debug(f"processing method name {cmd_name} and payload {payload}")
 
         try:
             # COMMAND ROUTING
-            if cmd_name == "RestartSlave":
-                status, code = restart_cmd(payload)
-            elif cmd_name == "SetSlaveIP":
-                status, code = set_slave_ip_cmd(payload)
+            if cmd_name == "reboot_slave":
+                success, message, code = reboot_slave_cmd(payload)
+            elif cmd_name == "configure_slave_ip":
+                success, message, code = set_slave_ip_cmd(payload)
             elif cmd_name == "Stop":
-                status, code = stop_cmd()
+                success, message, code = stop_cmd()
             else:
                 logger.warn(f"Unknown command {cmd_name}")
-                status, code = "Unknown command", 404
+                success, message, code = False, "Unknown command", 404
 
         except Exception as e:
             logger.error(f"Processing error: {e}")
-            status, code = "error", 500
+            success, message, code = False, "error", 500
 
         # SEND COMMAND RESPONSE
-        response_payload = {"status": status, "code": code}
+        response_payload = {"success":success, "message":message, "device_id":CLIENT.device_id}
         response = MethodResponse.create_from_method_request(
             cmd_request,
             code,
@@ -333,7 +361,6 @@ def main():
     try:
         # Send initial MasterInfo property update
         msg = create_info_msg()
-        logger.debug("Queuing message: {msg}")
         send_queue.put(my_azure.create_property_message_pair(msg))
             
         while RUNNING:

@@ -65,7 +65,16 @@ class Client():
         self.client = IoTHubDeviceClient.create_from_connection_string(conn_str)
         self.lock = threading.Lock()
         self.command_queue = queue.Queue()
-            
+        self.device_id = self.extract_device_id(conn_str)
+    
+    def extract_device_id(self, conn_str):
+        # 1. Split by semicolon into a list of components
+        parts = conn_str.split(';')
+        # 2. Find the component that contains 'DeviceId'
+        device_id_part = [p for p in parts if p.startswith('DeviceId=')][0]
+        # 3. Extract the value after the '='
+        return device_id_part.split('=')[1]
+
     def send_with_timeout(self, message):
         if message is None:
             logger.warn("No message to send.")
@@ -113,14 +122,13 @@ class Client():
         """
         Handler for incoming direct methods (commands).
         """
-        logger.info(f"Received command: {method_request.name}")
-        logger.debug(f"Received command {method_request.name} with payload {method_request.payload}")
+        logger.debug(f"Direct method received: Method name: {method_request.name} with payload: {method_request.payload}")
         # Push the request to the queue
         self.command_queue.put(method_request)
     
     def send_method_response(self, response):
         self.client.send_method_response(response)
-        
+    
     def disconnect(self):
         self.client.disconnect()
         logger.info("Disconnected.")

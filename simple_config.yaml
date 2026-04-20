@@ -1,9 +1,13 @@
 # Configuration file for Azure IoT device connection and application parameters
 
-id_scope: "0ne01173A60"
+connection_string: "HostName=msy-iot-ta-prod.azure-devices.net;DeviceId=site-001-iot;SharedAccessKey=/NgOhSuu/DSm9SSAxeg5vkuirvAe+aTlufTRrg/OYKY="
+
+id_scope: "0ne011AC31E"
 device_id: "site-001-iot"
-symmetric_key: "8SLw+5EYL2ZJ9jRagD7dMgQOb806nS3yQK4GgR4wTpGyAtR18LQRCBQSANdllSTb04Tlck8WiBN6AIoTsLefpQ=="
-provisioning_host: "global.azure-devices-provisioning.net"
+symmetric_key: "/NgOhSuu/DSm9SSAxeg5vkuirvAe+aTlufTRrg/OYKY="
+#"XmTtnVUI9USMrb8KPyFJnNI33tXQSQN+ELLlCUGY28BUmZXTJ+VfD3Q+OaSbSNB8v9XiY6zrR17RAIoT5lR3vA=="
+provisioning_host: "msy-iot-ta-prod.azure-devices.net"
+#"global.azure-devices-provisioning.net"
 
 heartbeat_interval_sec: 30.0 # seconds
 
