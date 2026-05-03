@@ -50,7 +50,7 @@ def ping(ip_address):
         logger.debug(f"An error occurred: {e}")
         return False
 
-def is_connected(host_site="www.google.com", port=80):
+def is_connected(host_site="www.google.com", port=80, debug=False):
     """
     Check internet connectivity by attempting to connect to a host.
     Default: Google DNS (8.8.8.8).
@@ -63,6 +63,8 @@ def is_connected(host_site="www.google.com", port=80):
         # TCP connectivity working?
         socket.setdefaulttimeout(CHECK_INTERVAL)
         socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        if debug:
+            logger.debug("Internet connectivity check passed.")
         return True
     
     except Exception as e:

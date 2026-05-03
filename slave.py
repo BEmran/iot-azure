@@ -20,5 +20,5 @@ class Slave:
             print(message)
 
 if __name__ == "__main__":
-    slave = Slave(relay_gpio_line=17, num=0, debug=True)
+    slave = Slave(relay_gpio_line=27, num=0, debug=True)
     slave.power_cycle(off_duration=5)

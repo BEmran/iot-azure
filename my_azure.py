@@ -101,6 +101,17 @@ class Client():
             except Exception as e:
                 logger.error(f"send_message failed: {e}")
                 return False
+    
+    def is_connected_to_iot_hub(self, debug=False):
+        with self.lock:
+            if self.client.connected:
+                if debug:
+                    logger.debug("Already connected to IoT Hub.")
+                    pass
+                return True
+            else:
+                logger.warn("Not connected to IoT Hub.")
+                return False    
             
     def connect_to_iot_hub(self):
         with self.lock:

@@ -46,7 +46,7 @@ if __name__ == "__main__":
     import time
 
     # Define the GPIO chip and line number
-    gpio_line = 17
+    gpio_line = 27
     relay = Relay(gpio_line, debug=True)
     delay = 2  # seconds
     
