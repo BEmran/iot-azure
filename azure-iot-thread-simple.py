@@ -10,6 +10,7 @@ import yaml
  # custom module
 import logger
 from slave import Slave # custom module
+from led import LED # custom module
 import network
 import my_azure
 import find_ip_mac_only
@@ -18,37 +19,35 @@ HEARTBEAT_SEQUENCE_NUMBER = 0
 
 CONFIG_PATH = "simple_config.yaml"
 RUNNING = True
+STATE = "OFFLINE"
 # ----------------------------------------------------
 # GLOBALS
 # ----------------------------------------------------
 send_queue = queue.Queue()
 CLIENT = None
 SLAVE_READY_STATE = False
-LED_USED = False
+REALY_USED = False
 DEVICE_ID = "0"
 SITE_NAME = "SITE-001" # TODO: get from config or env variable
 DEPLOYMENT_DATE = "2024-01-01" # TODO: get from config or env variable
 HEARTBEAT_INTERVAL_SEC = 10.0
-SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 17, "power_off_delay_sec": 5.0, "slave_ip_address": ""}
+SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 27, "power_off_delay_sec": 5.0, "slave_ip_address": ""}
+LED_CONFIG = {"network_gpio_line": 3, "azure_gpio_line": 4}
 LOG_CONFIG = {"print_level": "info", "log_level": "info", "log_dir": "logs"}
+
 
 # ----------------------------------------------------
 # change status
-# ----------------------------------------------------  
+# ----------------------------------------------------
 def slave_status():
-    global SLAVE_CONFIG
+    global SLAVE_CONFIG, STATE
     if SLAVE_CONFIG["slave_ip_address"] == "":
-        return "NOT_CONFIGURED"
+        return "UNCONFIGURED"
     elif network.ping(SLAVE_CONFIG["slave_ip_address"]):
-        return "CONNECTED"
+        return "ONLINE"
     else:
-        return "NOT_CONNECTED"
-    
-def led_status():
-    if LED_USED:
-        return "BUSY"
-    else:
-        return "READY"
+        return "OFFLINE"
+
 # ----------------------------------------------------
 # CONFIGURAION
 # ----------------------------------------------------
@@ -115,10 +114,10 @@ def parse_slave_config(config):
         logger.warn(f"Invalid power on delay {power_off_delay_sec}, using default {SLAVE_CONFIG['power_off_delay_sec']}")
         SLAVE_CONFIG["power_off_delay_sec"] = power_off_delay_sec
 
-    relay_gpio_line = int(config.get("relay_gpio_line", SLAVE_CONFIG["relay_gpio_line"]))
-    if relay_gpio_line < 0:
-        logger.warn(f"Invalid relay GPIO line {relay_gpio_line}, using default {SLAVE_CONFIG['relay_gpio_line']}")
-        SLAVE_CONFIG["relay_gpio_line"] = relay_gpio_line
+    relay_gpio = int(config.get("relay_gpio_line", SLAVE_CONFIG["relay_gpio_line"]))
+    if relay_gpio < 0:
+        logger.warn(f"Invalid relay GPIO line {relay_gpio}, using default {SLAVE_CONFIG['relay_gpio_line']}")
+        SLAVE_CONFIG["relay_gpio_line"] = relay_gpio
         
     ip = str(config.get("slave_ip_address", SLAVE_CONFIG["slave_ip_address"]))
     if not ip:
@@ -131,9 +130,21 @@ def parse_slave_config(config):
                 logger.warn("Could not find slave IP address on the network.")
         else:
             logger.warn(f"Slave ip address is empty, using default {SLAVE_CONFIG['slave_ip_address']}")
-        SLAVE_CONFIG["slave_ip_address"] = ip
-    
+    SLAVE_CONFIG["slave_ip_address"] = ip
     logger.debug(f"Slave configuration parsed: {SLAVE_CONFIG}")
+
+def parse_led_config(config):
+    """Get led configuration"""
+    global LED_CONFIG
+    network_gpio = int(config.get("network_led_gpio_line", LED_CONFIG["network_gpio_line"]))
+    azure_gpio = int(config.get("azure_led_gpio_line", LED_CONFIG["azure_gpio_line"]))
+    if network_gpio < 0:
+        logger.warn(f"Invalid network GPIO line {network_gpio}, using default {LED_CONFIG['network_gpio_line']}")
+    LED_CONFIG["network_gpio_line"] = network_gpio
+        
+    if azure_gpio < 0:
+        logger.warn(f"Invalid azure GPIO line {azure_gpio}, using default {LED_CONFIG['azure_gpio_line']}")
+    LED_CONFIG["azure_gpio_line"] = azure_gpio
 
 def apply_system_config():
     """Apply system configuration"""
@@ -151,7 +162,6 @@ def create_heartbeat(slave_status_str):
         "deviceUtcTs": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sequenceNumber": HEARTBEAT_SEQUENCE_NUMBER,
         "SlaveStatus": slave_status_str,
-        # "LedStatus": led_status(),
     }
     return payload
 
@@ -169,11 +179,11 @@ def create_info_msg():
 # COMMAND PROCESSOR THREAD
 # ======================================================
 def restart_slave_task(delay_sec):
-    global LED_USED
+    global REALY_USED
     if delay_sec is None or delay_sec < 0:
         delay_sec = 0
     logger.debug(f"Restarting slave will start in {delay_sec} seconds...")
-    LED_USED = True
+    REALY_USED = True
     time.sleep(delay_sec)
     
     Slave(
@@ -182,7 +192,7 @@ def restart_slave_task(delay_sec):
         debug=False
     ).power_cycle(off_duration=SLAVE_CONFIG["power_off_delay_sec"])
     
-    LED_USED = False
+    REALY_USED = False
     logger.debug("Slave restarted and ready.")
     
 def stop_task():
@@ -204,6 +214,9 @@ def reboot_slave_cmd(cmd_payload):
     #     reason = str(cmd_payload.get("reason"))
     # except Exception as e:
     #     logger.warn(f"Processing error: {e}") 
+    if REALY_USED:
+        logger.warn("Slave is already being restarted. Ignoring this command.")
+        return True, "Slave is busy restarting", -1
     logger.debug(f"Restarting in {delay} seconds. Reason: {reason}")
     threading.Thread(target=restart_slave_task, args=(delay, )).start()
     return True, "Reboot Success", 200
@@ -308,7 +321,7 @@ def sender_task(thread_running_event):
 # HEARTBEAT TASK THREAD – DIFFERENT RATE
 # ----------------------------------------------------
 def heartbeat_task(thread_running_event):
-    global CLIENT
+    global CLIENT # TODO: check if this is needed ?!
     last_time = 0
     while thread_running_event.is_set():
         now = time.time()
@@ -318,7 +331,27 @@ def heartbeat_task(thread_running_event):
             logger.debug(f"Queuing message: {message}")
             send_queue.put(my_azure.create_telementry_message_pair(message))
         time.sleep(0.1)
-
+        
+# ----------------------------------------------------
+# LED TASK THREAD – DIFFERENT RATE
+# ----------------------------------------------------
+def led_task(thread_running_event):
+    global CLIENT, LED_CONFIG
+    network_led = LED(gpio_line=LED_CONFIG["network_gpio_line"], name="Network", debug=False)
+    azure_led = LED(gpio_line=LED_CONFIG["azure_gpio_line"], name="Azure", debug=False)
+    while thread_running_event.is_set():
+        if network.is_connected(debug=False):
+            network_led.turn_on()
+        else:
+            network_led.turn_off()
+        if CLIENT and CLIENT.is_connected_to_iot_hub(debug=False):
+            azure_led.turn_on()
+        else:
+            azure_led.turn_off()
+        time.sleep(1)
+    network_led.turn_off()
+    azure_led.turn_off()
+    
 # ----------------------------------------------------
 # MAIN
 # ----------------------------------------------------
@@ -332,33 +365,39 @@ def main():
     parse_heartbeat_config(config)
     parse_log_config(config)
     parse_slave_config(config)
+    parse_led_config(config)
     apply_system_config()
 
-    network.wait_until_connected()
-    conn_str = connection_string(config)
-    CLIENT = my_azure.Client(conn_str)
-    
-    if not CLIENT.connect_to_iot_hub():
-        logger.error("Could not connect to IoT Hub.")
-        return  # Fail early if completely unable
-
-    logger.info("System ready.")
-    
-    # Start background sender thread
-    thread_running = threading.Event()
-    thread_running.set()
-    
-    # create threads
-    sender_worker = threading.Thread(target=sender_task, args=(thread_running,), daemon=True)
-    heartbeat_worker = threading.Thread(target=heartbeat_task, args=(thread_running,), daemon=True)
-    command_processor_worker = threading.Thread(target=command_processor_task, args=(thread_running,), daemon=True)
-
-    # start threads
-    sender_worker.start()
-    heartbeat_worker.start()
-    command_processor_worker.start()
     
     try:
+        
+        # Start background sender thread
+        thread_running = threading.Event()
+        thread_running.set()
+        # create threads
+        sender_worker = threading.Thread(target=sender_task, args=(thread_running,), daemon=True)
+        heartbeat_worker = threading.Thread(target=heartbeat_task, args=(thread_running,), daemon=True)
+        command_processor_worker = threading.Thread(target=command_processor_task, args=(thread_running,), daemon=True)
+        led_worker = threading.Thread(target=led_task, args=(thread_running,), daemon=True)
+        
+        # start debug thread
+        led_worker.start()
+        
+        network.wait_until_connected()
+        conn_str = connection_string(config)
+        CLIENT = my_azure.Client(conn_str)
+        
+        if not CLIENT.connect_to_iot_hub():
+            logger.error("Could not connect to IoT Hub.")
+            return  # Fail early if completely unable
+
+        logger.info("System ready.")
+        
+        # start threads
+        sender_worker.start()
+        heartbeat_worker.start()
+        command_processor_worker.start()
+    
         # Send initial MasterInfo property update
         msg = create_info_msg()
         send_queue.put(my_azure.create_property_message_pair(msg))
@@ -372,11 +411,12 @@ def main():
     finally:
         thread_running.clear()
         logger.close_logger()
+        CLIENT.disconnect()
+        led_worker.join(timeout=1)
         sender_worker.join(timeout=2)
         heartbeat_worker.join(timeout=1)
         command_processor_worker.join(timeout=1)
         time.sleep(2)  # wait for sender thread to exit
-        CLIENT.disconnect()
         logger.info("Disconnected.")
         logger.info("Exiting.")
         
