@@ -9,17 +9,7 @@ symmetric_key: "/NgOhSuu/DSm9SSAxeg5vkuirvAe+aTlufTRrg/OYKY="
 provisioning_host: "msy-iot-ta-prod.azure-devices.net"
 #"global.azure-devices-provisioning.net"
 
-heartbeat_interval_sec: 30.0 # seconds
-
-log_dir: "logs"  # Directory to store log files
-print_level: "INFO"  # Minimum level for terminal printing: "DEBUG", "INFO", "WARN", "ERROR"
-log_level: "DEBUG"  # Minimum level for file logging: "DEBUG", "INFO", "WARN", "ERROR"
-
-relay_gpio_line: 27  # GPIO line number for relay control
-power_on_delay_sec: 5.0  # Delay after powering on the slave
-
-network_led_gpio_line: 4  # GPIO line number for led network conection
-azure_led_gpio_line: 17  # # GPIO line number for led azure connection
-
 search_for_slave_ip_address: false
 slave_ip_address: "192.168.68.100"
+
+detect_power: True

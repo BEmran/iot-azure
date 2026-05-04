@@ -11,28 +11,29 @@ import yaml
 import logger
 from slave import Slave # custom module
 from led import LED # custom module
+from sense_current import ReliableCurrentSensing # custom module
 import network
 import my_azure
 import find_ip_mac_only
 
 HEARTBEAT_SEQUENCE_NUMBER = 0
 
-CONFIG_PATH = "simple_config.yaml"
+AZURE_CONFIG_PATH = "azure_config.yaml"
+APP_CONFIG_PATH = "app_config.yaml"
 RUNNING = True
-STATE = "OFFLINE"
+STATE = "UNCONFIGURED"
+POWER_STATE = True # assume power is on at start, will be updated by power sensing task
 # ----------------------------------------------------
 # GLOBALS
 # ----------------------------------------------------
 send_queue = queue.Queue()
 CLIENT = None
-SLAVE_READY_STATE = False
 REALY_USED = False
 DEVICE_ID = "0"
-SITE_NAME = "SITE-001" # TODO: get from config or env variable
 DEPLOYMENT_DATE = "2024-01-01" # TODO: get from config or env variable
 HEARTBEAT_INTERVAL_SEC = 10.0
-SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 27, "power_off_delay_sec": 5.0, "slave_ip_address": ""}
-LED_CONFIG = {"network_gpio_line": 3, "azure_gpio_line": 4}
+SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 27, "power_off_delay_sec": 5.0, "slave_ip_address": "", "detect_power": False}
+LED_CONFIG = {"network_gpio_line": 4, "azure_gpio_line": 17}
 LOG_CONFIG = {"print_level": "info", "log_level": "info", "log_dir": "logs"}
 
 
@@ -40,22 +41,28 @@ LOG_CONFIG = {"print_level": "info", "log_level": "info", "log_dir": "logs"}
 # change status
 # ----------------------------------------------------
 def slave_status():
-    global SLAVE_CONFIG, STATE
-    if SLAVE_CONFIG["slave_ip_address"] == "":
+    global SLAVE_CONFIG, POWER_STATE
+    ip = SLAVE_CONFIG["slave_ip_address"]
+    if ip == "":
         return "UNCONFIGURED"
-    elif network.ping(SLAVE_CONFIG["slave_ip_address"]):
+    
+    if SLAVE_CONFIG["detect_power"] and not POWER_STATE:
+        return "DOWN"
+    
+    if network.ping(ip):
         return "ONLINE"
     else:
         return "OFFLINE"
 
+
 # ----------------------------------------------------
 # CONFIGURAION
 # ----------------------------------------------------
-def load_config(config_path=CONFIG_PATH):
+def load_config(config_path):
     try:
         with open(config_path, "r") as f:
             cfg = yaml.safe_load(f)
-            logger.info(f"Configuration loaded from {CONFIG_PATH}")
+            logger.info(f"Configuration loaded from {config_path}")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         raise Runtimelogger.error(f"Cannot find configuration file")
@@ -107,17 +114,17 @@ def parse_slave_config(config):
     num = config.get("num", SLAVE_CONFIG["num"])
     if num < 0:
         logger.warn(f"Invalid slave num {num}, using default {SLAVE_CONFIG['num']}")
-        SLAVE_CONFIG["num"] = num
+    SLAVE_CONFIG["num"] = num
     
     power_off_delay_sec = float(config.get("power_off_delay_sec", SLAVE_CONFIG["power_off_delay_sec"]))
     if power_off_delay_sec < 0:
         logger.warn(f"Invalid power on delay {power_off_delay_sec}, using default {SLAVE_CONFIG['power_off_delay_sec']}")
-        SLAVE_CONFIG["power_off_delay_sec"] = power_off_delay_sec
+    SLAVE_CONFIG["power_off_delay_sec"] = power_off_delay_sec
 
     relay_gpio = int(config.get("relay_gpio_line", SLAVE_CONFIG["relay_gpio_line"]))
     if relay_gpio < 0:
         logger.warn(f"Invalid relay GPIO line {relay_gpio}, using default {SLAVE_CONFIG['relay_gpio_line']}")
-        SLAVE_CONFIG["relay_gpio_line"] = relay_gpio
+    SLAVE_CONFIG["relay_gpio_line"] = relay_gpio
         
     ip = str(config.get("slave_ip_address", SLAVE_CONFIG["slave_ip_address"]))
     if not ip:
@@ -131,7 +138,11 @@ def parse_slave_config(config):
         else:
             logger.warn(f"Slave ip address is empty, using default {SLAVE_CONFIG['slave_ip_address']}")
     SLAVE_CONFIG["slave_ip_address"] = ip
+    
+    SLAVE_CONFIG["detect_power"] = bool(config.get("detect_power", SLAVE_CONFIG["detect_power"]))
+    
     logger.debug(f"Slave configuration parsed: {SLAVE_CONFIG}")
+
 
 def parse_led_config(config):
     """Get led configuration"""
@@ -166,9 +177,9 @@ def create_heartbeat(slave_status_str):
     return payload
 
 def create_info_msg():
-    global SLAVE_CONFIG, SITE_NAME, DEPLOYMENT_DATE 
+    global SLAVE_CONFIG, DEVICE_ID, DEPLOYMENT_DATE 
     payload = {
-        "siteName": SITE_NAME,
+        "device_id": DEVICE_ID,
         "deploymentDate": DEPLOYMENT_DATE,
         "rpiIp": network.get_local_ip(), # str(socket.gethostbyname(socket.gethostname())),
         "slaveIp": SLAVE_CONFIG["slave_ip_address"],
@@ -204,7 +215,6 @@ def stop_task():
     
 def reboot_slave_cmd(cmd_payload):
     global STATE
-    STATE = "ONLINE" # TDOD remove this
     logger.info("Restart command received.")
     delay = 1
     reason = ""
@@ -353,6 +363,20 @@ def led_task(thread_running_event):
     azure_led.turn_off()
     
 # ----------------------------------------------------
+# LED TASK THREAD – DIFFERENT RATE
+# ----------------------------------------------------
+def power_task(thread_running_event):
+    global POWER_STATE
+    sensor = ReliableCurrentSensing()
+    while thread_running_event.is_set():
+        if sensor.is_current_detected_for_window(debug=False):
+            POWER_STATE = True
+            logger.debug("Current detected. Power state ON.")
+        else:
+            POWER_STATE = False
+            logger.debug("No current detected. Power state OFF.")
+        time.sleep(15)  # check every 15 seconds
+# ----------------------------------------------------
 # MAIN
 # ----------------------------------------------------
 def main():
@@ -361,14 +385,14 @@ def main():
     logger.debug(f"Starting Azure IoT device client at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
     
     # parse configuration
-    config = load_config()
-    parse_heartbeat_config(config)
-    parse_log_config(config)
-    parse_slave_config(config)
-    parse_led_config(config)
+    app_config = load_config(config_path=APP_CONFIG_PATH)
+    parse_log_config(app_config)
     apply_system_config()
+    parse_heartbeat_config(app_config)
+    parse_led_config(app_config)
 
-    
+    azure_config = load_config(config_path=AZURE_CONFIG_PATH)
+    parse_slave_config(azure_config)
     try:
         
         # Start background sender thread
@@ -379,12 +403,13 @@ def main():
         heartbeat_worker = threading.Thread(target=heartbeat_task, args=(thread_running,), daemon=True)
         command_processor_worker = threading.Thread(target=command_processor_task, args=(thread_running,), daemon=True)
         led_worker = threading.Thread(target=led_task, args=(thread_running,), daemon=True)
+        power_worker = threading.Thread(target=power_task, args=(thread_running,), daemon=True)
         
         # start debug thread
         led_worker.start()
         
         network.wait_until_connected()
-        conn_str = connection_string(config)
+        conn_str = connection_string(azure_config)
         CLIENT = my_azure.Client(conn_str)
         
         if not CLIENT.connect_to_iot_hub():
@@ -397,6 +422,7 @@ def main():
         sender_worker.start()
         heartbeat_worker.start()
         command_processor_worker.start()
+        power_worker.start()
     
         # Send initial MasterInfo property update
         msg = create_info_msg()
@@ -416,6 +442,7 @@ def main():
         sender_worker.join(timeout=2)
         heartbeat_worker.join(timeout=1)
         command_processor_worker.join(timeout=1)
+        power_worker.join(timeout=1)
         time.sleep(2)  # wait for sender thread to exit
         logger.info("Disconnected.")
         logger.info("Exiting.")
