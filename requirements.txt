@@ -2,3 +2,5 @@ azure-iot-device
 PyYAML
 gpiod
 adafruit_ads1x15
+adafruit-blinka
+adafruit-circuitpython-ads1x15
