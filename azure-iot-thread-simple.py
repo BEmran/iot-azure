@@ -126,18 +126,17 @@ def connection_string(config):
     global DEVICE_ID
     # priority to connection string
     if "connection_string" in config:
-        logger.debug("Using conenction string to connect to azure")
-        return config["connection_string"]
+        logger.debug(f"Using conenction string to connect to azure, {config['connection_string']}")
 
-    if "device_id" not in config or "symmetric_key" not in config or "id_scope" not in config or "provisioning_host" not in config:
-        logger.error("Incomplete DPS configuration. missing one of device_id, symmetric_key, id_scope, provisioning_host")
+    if "device_id" not in config:
+        logger.error("Incomplete DPS configuration. missing device_id")
         raise RuntimeError("Cannot find connection string related configuration")
     DEVICE_ID = config["device_id"]
-    id_scope = config["id_scope"]
-    symmetric_key = config["symmetric_key"]
-    provisioning_host = config["provisioning_host"]
-    logger.debug(f"Connection configuration parsed device_id={DEVICE_ID}, id_scope={id_scope}, symmetric_key={symmetric_key}, provisioning_host={provisioning_host}")
-    return my_azure.create_connection_str_from_dps(DEVICE_ID, id_scope, symmetric_key, provisioning_host)
+    
+    logger.debug(f"Connection configuration parsed device_id={DEVICE_ID}")
+    
+    return config["connection_string"]
+
 
 def parse_heartbeat_config(config):
     """Parse heartbeat configuration"""
