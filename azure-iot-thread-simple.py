@@ -10,6 +10,7 @@ import yaml
 import subprocess
 import git
 import os
+from pathlib import Path
 import shutil
 
  # custom module
@@ -45,29 +46,51 @@ BRANCH_NAME = "main"
 # ----------------------------------------------------
 # helpper
 # # ----------------------------------------------------
+
+from pathlib import Path
+import shutil
+import git
+import subprocess
+
+BRANCH_NAME = "stable"
+REPO_PATH = Path("/opt/iot-azure")
+
 def git_pull_repo():
     try:
-        # os.path.realpath handles symlinks correctly
-        repo_path = os.path.dirname(os.path.realpath(__file__))
-        logger.debug(f"The script is located in: {repo_path}")
-        # Initialize the repo object from the path
-        repo = git.Repo(repo_path)
+        logger.debug(f"Using repo path: {REPO_PATH}")
+
+        repo = git.Repo(REPO_PATH)
         origin = repo.remotes.origin
-        # Pull the specific branch
-        origin.pull(BRANCH_NAME)
-        logger.info(f"Successfully pulled {BRANCH_NAME} in {repo_path}")
 
-        # This function can be used to perform any necessary cleanup or reinitialization after a git pull
-        # Re-apply local azure_config.yaml if you want the deployed config preserved
+        try:
+            stash_result = repo.git.stash("push", "-u", "-m", "auto-stash-before-update")
+            logger.debug(stash_result)
+            if "No local changes to save" not in stash_result:
+                repo.git.stash("drop")
+                logger.debug("Dropped temporary auto-stash")
+                
+        except Exception as stash_err:
+            logger.warn(f"Stash step failed: {stash_err}")
+        except Exception as drop_err:
+            logger.warn(f"Could not drop stash: {drop_err}")
+            
+        origin.fetch()
+        repo.git.checkout(BRANCH_NAME)
+        repo.git.reset("--hard", f"origin/{BRANCH_NAME}")
+        logger.info(f"Successfully updated {BRANCH_NAME} in {REPO_PATH}")
 
-        local_cfg = "/opt/site_provision/config/azure_config.yaml"
-        repo_cfg = os.path.join(repo_path, "azure_config.yaml")
-        
+        local_cfg = Path("/opt/site_provision/config/azure_config.yaml")
+        repo_cfg = REPO_PATH / "azure_config.yaml"
+
         if local_cfg.exists():
             shutil.copy2(local_cfg, repo_cfg)
+            logger.info(f"Restored local config: {local_cfg} -> {repo_cfg}")
+        else:
+            logger.warn(f"Local config not found: {local_cfg}")
 
     except Exception as e:
-        logger.warn(f"Failed to pull branch: {e}")
+        logger.warn(f"Failed to update branch: {e}")
+
 # ----------------------------------------------------
 # change status
 # ----------------------------------------------------
