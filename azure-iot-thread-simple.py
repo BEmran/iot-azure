@@ -7,6 +7,11 @@ from azure.iot.device import ProvisioningDeviceClient, IoTHubDeviceClient, Metho
 import threading
 import queue
 import yaml
+import subprocess
+import git
+import os
+import shutil
+
  # custom module
 import logger
 from slave import Slave # custom module
@@ -35,8 +40,34 @@ HEARTBEAT_INTERVAL_SEC = 10.0
 SLAVE_CONFIG = {"num": 0, "relay_gpio_line": 27, "power_off_delay_sec": 5.0, "slave_ip_address": "", "detect_power": False}
 LED_CONFIG = {"network_gpio_line": 4, "azure_gpio_line": 17}
 LOG_CONFIG = {"print_level": "info", "log_level": "info", "log_dir": "logs"}
+BRANCH_NAME = "main"
 
+# ----------------------------------------------------
+# helpper
+# # ----------------------------------------------------
+def git_pull_repo():
+    try:
+        # os.path.realpath handles symlinks correctly
+        repo_path = os.path.dirname(os.path.realpath(__file__))
+        logger.debug(f"The script is located in: {repo_path}")
+        # Initialize the repo object from the path
+        repo = git.Repo(repo_path)
+        origin = repo.remotes.origin
+        # Pull the specific branch
+        origin.pull(BRANCH_NAME)
+        logger.info(f"Successfully pulled {BRANCH_NAME} in {repo_path}")
 
+        # This function can be used to perform any necessary cleanup or reinitialization after a git pull
+        # Re-apply local azure_config.yaml if you want the deployed config preserved
+
+        local_cfg = "/opt/site_provision/config/azure_config.yaml"
+        repo_cfg = os.path.join(repo_path, "azure_config.yaml")
+        
+        if local_cfg.exists():
+            shutil.copy2(local_cfg, repo_cfg)
+
+    except Exception as e:
+        logger.warn(f"Failed to pull branch: {e}")
 # ----------------------------------------------------
 # change status
 # ----------------------------------------------------
@@ -65,7 +96,7 @@ def load_config(config_path):
             logger.info(f"Configuration loaded from {config_path}")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
-        raise Runtimelogger.error(f"Cannot find configuration file")
+        raise RuntimeError("Cannot find configuration file")
     return cfg
 
 def connection_string(config):
@@ -77,7 +108,7 @@ def connection_string(config):
 
     if "device_id" not in config or "symmetric_key" not in config or "id_scope" not in config or "provisioning_host" not in config:
         logger.error("Incomplete DPS configuration. missing one of device_id, symmetric_key, id_scope, provisioning_host")
-        raise Runtimelogger.error(f"Cannot find connection string related configuration")
+        raise RuntimeError("Cannot find connection string related configuration")
     DEVICE_ID = config["device_id"]
     id_scope = config["id_scope"]
     symmetric_key = config["symmetric_key"]
@@ -143,7 +174,6 @@ def parse_slave_config(config):
     
     logger.debug(f"Slave configuration parsed: {SLAVE_CONFIG}")
 
-
 def parse_led_config(config):
     """Get led configuration"""
     global LED_CONFIG
@@ -156,6 +186,14 @@ def parse_led_config(config):
     if azure_gpio < 0:
         logger.warn(f"Invalid azure GPIO line {azure_gpio}, using default {LED_CONFIG['azure_gpio_line']}")
     LED_CONFIG["azure_gpio_line"] = azure_gpio
+
+def parse_general_config(config):
+    """Get general configuration"""
+    global BRANCH_NAME
+    branch_name = str(config.get("branch_name", BRANCH_NAME))
+    if branch_name == "":
+        logger.warn(f"Invalid branch name '{branch_name}', using default '{BRANCH_NAME}'")
+    BRANCH_NAME = branch_name
 
 def apply_system_config():
     """Apply system configuration"""
@@ -212,7 +250,19 @@ def stop_task():
     logger.debug(f"Stop Running in {delay_sec} seconds...")
     time.sleep(delay_sec)
     RUNNING = False
-    
+      
+def restart_device_task(thread_running_event):
+    delay_min = 1
+    logger.debug(f"Restarting in {delay_min} minutes...")
+    # 'sudo shutdown -r +X' reboots the system in minutes
+    command = f"sudo shutdown -r +{delay_min}"
+    subprocess.run(command.split())
+    thread_running_event.clear()  # signal threads to stop
+      
+def update_repo_task():
+    logger.debug("Updating repository...")
+    git_pull_repo();
+         
 def reboot_slave_cmd(cmd_payload):
     global STATE
     logger.info("Restart command received.")
@@ -234,6 +284,16 @@ def reboot_slave_cmd(cmd_payload):
 def stop_cmd():
     logger.info("Stop command received.")
     threading.Thread(target=stop_task).start()
+    return True, "Recived", 200
+
+def restart_device_cmd(thread_running_event):
+    logger.info("Restart Device command received.")
+    threading.Thread(target=restart_device_task, args=(thread_running_event,)).start()
+    return True, "Recived", 200
+
+def update_repo_cmd():
+    logger.info("Update repo command received.")
+    threading.Thread(target=update_repo_task).start()
     return True, "Recived", 200
 
 def set_slave_ip_cmd(cmd_payload):
@@ -277,6 +337,10 @@ def command_processor_task(thread_running_event):
                 success, message, code = set_slave_ip_cmd(payload)
             elif cmd_name == "Stop":
                 success, message, code = stop_cmd()
+            elif cmd_name == "restart_device":
+                success, message, code = restart_device_cmd(thread_running_event)
+            elif cmd_name == "update_repo":
+                success, message, code = update_repo_cmd()
             else:
                 logger.warn(f"Unknown command {cmd_name}")
                 success, message, code = False, "Unknown command", 404
@@ -390,20 +454,21 @@ def main():
     apply_system_config()
     parse_heartbeat_config(app_config)
     parse_led_config(app_config)
+    parse_general_config(app_config)
 
     azure_config = load_config(config_path=AZURE_CONFIG_PATH)
     parse_slave_config(azure_config)
     try:
         
         # Start background sender thread
-        thread_running = threading.Event()
-        thread_running.set()
+        thread_running_event = threading.Event()
+        thread_running_event.set()
         # create threads
-        sender_worker = threading.Thread(target=sender_task, args=(thread_running,), daemon=True)
-        heartbeat_worker = threading.Thread(target=heartbeat_task, args=(thread_running,), daemon=True)
-        command_processor_worker = threading.Thread(target=command_processor_task, args=(thread_running,), daemon=True)
-        led_worker = threading.Thread(target=led_task, args=(thread_running,), daemon=True)
-        power_worker = threading.Thread(target=power_task, args=(thread_running,), daemon=True)
+        sender_worker = threading.Thread(target=sender_task, args=(thread_running_event,), daemon=True)
+        heartbeat_worker = threading.Thread(target=heartbeat_task, args=(thread_running_event,), daemon=True)
+        command_processor_worker = threading.Thread(target=command_processor_task, args=(thread_running_event,), daemon=True)
+        led_worker = threading.Thread(target=led_task, args=(thread_running_event,), daemon=True)
+        power_worker = threading.Thread(target=power_task, args=(thread_running_event,), daemon=True)
         
         # start debug thread
         led_worker.start()
