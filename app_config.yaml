@@ -4,6 +4,8 @@ log_dir: "logs"  # Directory to store log files
 print_level: "INFO"  # Minimum level for terminal printing: "DEBUG", "INFO", "WARN", "ERROR"
 log_level: "DEBUG"  # Minimum level for file logging: "DEBUG", "INFO", "WARN", "ERROR"
 
+branch_name: stable
+
 relay_gpio_line: 27  # GPIO line number for relay control
 power_on_delay_sec: 5.0  # Delay after powering on the slave
 
