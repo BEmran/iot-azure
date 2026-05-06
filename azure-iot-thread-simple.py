@@ -10,6 +10,8 @@ import yaml
 import subprocess
 import git
 import os
+import shutil
+
  # custom module
 import logger
 from slave import Slave # custom module
@@ -54,9 +56,18 @@ def git_pull_repo():
         # Pull the specific branch
         origin.pull(BRANCH_NAME)
         logger.info(f"Successfully pulled {BRANCH_NAME} in {repo_path}")
+
+        # This function can be used to perform any necessary cleanup or reinitialization after a git pull
+        # Re-apply local azure_config.yaml if you want the deployed config preserved
+
+        local_cfg = "/opt/site_provision/config/azure_config.yaml"
+        repo_cfg = os.path.join(repo_path, "azure_config.yaml")
+        
+        if local_cfg.exists():
+            shutil.copy2(local_cfg, repo_cfg)
+
     except Exception as e:
         logger.warn(f"Failed to pull branch: {e}")
-        
 # ----------------------------------------------------
 # change status
 # ----------------------------------------------------
@@ -247,7 +258,11 @@ def restart_device_task(thread_running_event):
     command = f"sudo shutdown -r +{delay_min}"
     subprocess.run(command.split())
     thread_running_event.clear()  # signal threads to stop
-        
+      
+def update_repo_task():
+    logger.debug("Updating repository...")
+    git_pull_repo();
+         
 def reboot_slave_cmd(cmd_payload):
     global STATE
     logger.info("Restart command received.")
@@ -278,7 +293,7 @@ def restart_device_cmd(thread_running_event):
 
 def update_repo_cmd():
     logger.info("Update repo command received.")
-    threading.Thread(target=git_pull_repo).start()
+    threading.Thread(target=update_repo_task).start()
     return True, "Recived", 200
 
 def set_slave_ip_cmd(cmd_payload):
