@@ -30,16 +30,15 @@ class CurentSensing():
             data_rate (int, optional): _description_. Defaults to 64.
         """
         # Create I2C bus
+        self.gain = gain
+        self.data_rate = data_rate
+
         i2c = board.I2C()
 
-        # Create ADS1115 object
         self.ads = ADS1115(i2c, address=0x48)
+        self.ads.gain = self.gain
+        self.ads.data_rate = self.data_rate
 
-        # Set gain and data rate
-        self.ads.gain = gain
-        self.ads.data_rate = data_rate
-
-        # Differential input A0 - A1
         self.chan = AnalogIn(self.ads, ads1x15.Pin.A0, ads1x15.Pin.A1)
         self.last_vpp = 0
 
@@ -51,9 +50,22 @@ class CurentSensing():
         - number of samples
         """
         values = []
+        # Do not read faster than the ADC data rate.
+        # Add a little margin.
+        sample_delay = 1.0 / self.data_rate
         end_time = time.time() + window_seconds
         while time.time() < end_time:
-            values.append(self.chan.voltage)
+            try:
+                values.append(self.chan.voltage)
+            except OSError as e:
+                print(f"I2C read error: {e}. Reinitializing ADS1115...")
+                self.reset_adc()
+                time.sleep(0.1)
+            time.sleep(sample_delay)
+            
+        if not values:
+            raise RuntimeError("No ADC samples collected")
+        
         vpp = max(values) - min(values)
         max_abs = max(abs(v) for v in values)
         n = len(values)
@@ -69,7 +81,18 @@ class CurentSensing():
             vpp = self.last_vpp  # Use last known Vpp if read fails
         self.last_vpp = vpp  # Update last known Vpp
         return vpp > threshold
+    
+    def reset_adc(self):
+        """Reinitialize ADS1115 after I2C communication error."""
+        time.sleep(0.2)
 
+        i2c = board.I2C()
+        self.ads = ADS1115(i2c, address=0x48)
+        self.ads.gain = self.gain
+        self.ads.data_rate = self.data_rate
+        self.chan = AnalogIn(self.ads, ads1x15.Pin.A0, ads1x15.Pin.A1)
+        
+        
 class ReliableCurrentSensing(CurentSensing):
     def __init__(self, gain=GAIN, data_rate=DATA_RATE, num_blocks=NUM_BLOCKS, window_seconds=WINDOW_SECONDS):
         super().__init__(gain=gain, data_rate=data_rate)
